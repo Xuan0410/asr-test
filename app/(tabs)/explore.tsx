@@ -1,112 +1,130 @@
-import { Image } from 'expo-image';
-import { Platform, StyleSheet } from 'react-native';
+import { Button, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { Collapsible } from '@/components/ui/collapsible';
-import { ExternalLink } from '@/components/external-link';
-import ParallaxScrollView from '@/components/parallax-scroll-view';
-import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
-import { IconSymbol } from '@/components/ui/icon-symbol';
-import { Fonts } from '@/constants/theme';
+// If your RN packager is not enable package exports support, use whisper.rn/src/realtime-transcription
+import { useEffect, useState } from 'react';
+import RNFS from 'react-native-fs';
+import { initWhisper } from 'whisper.rn/index.js';
+import { AudioPcmStreamAdapter } from 'whisper.rn/realtime-transcription/adapters/AudioPcmStreamAdapter.js';
+import { RealtimeTranscriber } from 'whisper.rn/realtime-transcription/index.js';
 
 export default function TabTwoScreen() {
+  const [recognizing, setRecognizing] = useState(false);
+  const [transcript, setTranscript] = useState('');
+  const [transcriber, setTranscriber] = useState<RealtimeTranscriber | null>(null);
+
+  useEffect(() => {
+    if (!transcriber) {
+      (async () => {
+        // Dependencies
+        const whisperContext = await initWhisper({
+          filePath: require('../../assets/ggml-base.bin'),
+        });
+
+        // const vadContext = await initWhisperVad({
+        //   filePath: require('../../assets/ggml-silero-v5.1.2.bin'),
+        //   useGpu: true,
+        //   nThreads: 4,
+        // });
+        const audioStream = new AudioPcmStreamAdapter(); // requires @fugood/react-native-audio-pcm-stream
+        // Create transcriber
+        const transcriber = new RealtimeTranscriber(
+          { whisperContext, audioStream, fs: RNFS },
+          {
+            audioSliceSec: 60,
+            autoSliceOnSpeechEnd: true,
+            transcribeOptions: { language: 'zh' },
+          },
+          {
+            onTranscribe: (event) => {
+              console.log('Transcription:', event.data?.result);
+              setTranscript(event.data?.result ?? '');
+            },
+            onVad: (event) => console.log('VAD:', event.type, event.confidence),
+            onStatusChange: (isActive) => {
+              console.log('Status:', isActive ? 'ACTIVE' : 'INACTIVE');
+              if (!isActive) setRecognizing(false);
+            },
+            onError: (error) => console.error('Error:', error),
+          },
+        );
+        setTranscriber(transcriber);
+      })();
+    }
+  }, []);
+
   return (
-    <ParallaxScrollView
-      headerBackgroundColor={{ light: '#D0D0D0', dark: '#353636' }}
-      headerImage={
-        <IconSymbol
-          size={310}
-          color="#808080"
-          name="chevron.left.forwardslash.chevron.right"
-          style={styles.headerImage}
-        />
-      }>
-      <ThemedView style={styles.titleContainer}>
-        <ThemedText
-          type="title"
-          style={{
-            fontFamily: Fonts.rounded,
-          }}>
-          Explore
-        </ThemedText>
-      </ThemedView>
-      <ThemedText>This app includes example code to help you get started.</ThemedText>
-      <Collapsible title="File-based routing">
-        <ThemedText>
-          This app has two screens:{' '}
-          <ThemedText type="defaultSemiBold">app/(tabs)/index.tsx</ThemedText> and{' '}
-          <ThemedText type="defaultSemiBold">app/(tabs)/explore.tsx</ThemedText>
-        </ThemedText>
-        <ThemedText>
-          The layout file in <ThemedText type="defaultSemiBold">app/(tabs)/_layout.tsx</ThemedText>{' '}
-          sets up the tab navigator.
-        </ThemedText>
-        <ExternalLink href="https://docs.expo.dev/router/introduction">
-          <ThemedText type="link">Learn more</ThemedText>
-        </ExternalLink>
-      </Collapsible>
-      <Collapsible title="Android, iOS, and web support">
-        <ThemedText>
-          You can open this project on Android, iOS, and the web. To open the web version, press{' '}
-          <ThemedText type="defaultSemiBold">w</ThemedText> in the terminal running this project.
-        </ThemedText>
-      </Collapsible>
-      <Collapsible title="Images">
-        <ThemedText>
-          For static images, you can use the <ThemedText type="defaultSemiBold">@2x</ThemedText> and{' '}
-          <ThemedText type="defaultSemiBold">@3x</ThemedText> suffixes to provide files for
-          different screen densities
-        </ThemedText>
-        <Image
-          source={require('@/assets/images/react-logo.png')}
-          style={{ width: 100, height: 100, alignSelf: 'center' }}
-        />
-        <ExternalLink href="https://reactnative.dev/docs/images">
-          <ThemedText type="link">Learn more</ThemedText>
-        </ExternalLink>
-      </Collapsible>
-      <Collapsible title="Light and dark mode components">
-        <ThemedText>
-          This template has light and dark mode support. The{' '}
-          <ThemedText type="defaultSemiBold">useColorScheme()</ThemedText> hook lets you inspect
-          what the user&apos;s current color scheme is, and so you can adjust UI colors accordingly.
-        </ThemedText>
-        <ExternalLink href="https://docs.expo.dev/develop/user-interface/color-themes/">
-          <ThemedText type="link">Learn more</ThemedText>
-        </ExternalLink>
-      </Collapsible>
-      <Collapsible title="Animations">
-        <ThemedText>
-          This template includes an example of an animated component. The{' '}
-          <ThemedText type="defaultSemiBold">components/HelloWave.tsx</ThemedText> component uses
-          the powerful{' '}
-          <ThemedText type="defaultSemiBold" style={{ fontFamily: Fonts.mono }}>
-            react-native-reanimated
-          </ThemedText>{' '}
-          library to create a waving hand animation.
-        </ThemedText>
-        {Platform.select({
-          ios: (
-            <ThemedText>
-              The <ThemedText type="defaultSemiBold">components/ParallaxScrollView.tsx</ThemedText>{' '}
-              component provides a parallax effect for the header image.
-            </ThemedText>
-          ),
-        })}
-      </Collapsible>
-    </ParallaxScrollView>
+    <SafeAreaView style={styles.safeArea}>
+      <View style={styles.container}>
+        <ScrollView
+          style={styles.transcriptWrapper}
+          contentContainerStyle={styles.transcriptContainer}
+        >
+          <Text style={styles.transcriptText}>{transcript || '點擊下方按鈕開始錄音'}</Text>
+        </ScrollView>
+
+        <View style={styles.controls}>
+          {!recognizing ? (
+            <Button
+              title="開始錄音"
+              onPress={async () => {
+                await transcriber?.start();
+                setTranscript('');
+                setRecognizing(true);
+              }}
+              color="#2563eb"
+            />
+          ) : (
+            <Button
+              title="停止錄音"
+              onPress={async () => {
+                await transcriber?.stop();
+                setRecognizing(false);
+              }}
+              color="#dc2626"
+            />
+          )}
+        </View>
+      </View>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  headerImage: {
-    color: '#808080',
-    bottom: -90,
-    left: -35,
-    position: 'absolute',
+  safeArea: {
+    flex: 1,
+    backgroundColor: '#f8fafc',
   },
-  titleContainer: {
-    flexDirection: 'row',
-    gap: 8,
+  container: {
+    flex: 1,
+    paddingHorizontal: 24,
+    paddingVertical: 32,
+    justifyContent: 'space-between',
+  },
+  transcriptWrapper: {
+    flex: 1,
+    borderRadius: 16,
+    backgroundColor: '#ffffff',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.08,
+    shadowRadius: 12,
+    elevation: 4,
+  },
+  transcriptContainer: {
+    flexGrow: 1,
+    padding: 24,
+    justifyContent: 'flex-start',
+    alignItems: 'center',
+  },
+  transcriptText: {
+    fontSize: 18,
+    lineHeight: 28,
+    textAlign: 'center',
+    color: '#1f2937',
+  },
+  controls: {
+    width: '100%',
+    paddingTop: 24,
   },
 });
